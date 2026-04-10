@@ -1,0 +1,117 @@
+# Audio Asset Studio — 카테고리별 기본값
+categories:
+  # ── SFX ──
+  sfx_ui:
+    description: "UI 인터랙션 (버튼 클릭, 탭, 슬라이드)"
+    default_duration_ms: 200
+    duration_range: [100, 300]
+    default_variations: 3
+    default_format: ogg
+    channels: mono
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", short UI sound effect, clean"
+    post_process: [trim, normalize, fade, format_convert]
+
+  sfx_reward:
+    description: "보상/레벨업 (코인 획득, 업적 해제)"
+    default_duration_ms: 1000
+    duration_range: [500, 2000]
+    default_variations: 3
+    default_format: ogg
+    channels: mono
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", reward sound effect, satisfying"
+    post_process: [trim, normalize, fade, format_convert]
+
+  sfx_impact:
+    description: "타격/충돌 (공격, 피격, 폭발)"
+    default_duration_ms: 350
+    duration_range: [200, 500]
+    default_variations: 5
+    default_format: ogg
+    channels: mono
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", impact sound effect, punchy"
+    post_process: [trim, normalize, fade, format_convert]
+
+  sfx_ambient:
+    description: "환경음 (바람, 물, 불)"
+    default_duration_ms: 5000
+    duration_range: [2000, 10000]
+    default_variations: 1
+    default_format: ogg
+    channels: stereo
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", ambient loop, seamless"
+    post_process: [trim, normalize, loop_crossfade, format_convert]
+
+  sfx_character:
+    description: "캐릭터 반응 (점프, 대시, 사망)"
+    default_duration_ms: 400
+    duration_range: [200, 800]
+    default_variations: 3
+    default_format: ogg
+    channels: mono
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", character sound effect"
+    post_process: [trim, normalize, fade, format_convert]
+
+  sfx_notification:
+    description: "알림 (퀘스트 완료, 경고, 타이머)"
+    default_duration_ms: 600
+    duration_range: [300, 1000]
+    default_variations: 2
+    default_format: ogg
+    channels: mono
+    sample_rate: 44100
+    model: audiogen
+    prompt_suffix: ", notification sound, clear"
+    post_process: [trim, normalize, fade, format_convert]
+
+  # ── BGM ──
+  bgm_loop:
+    description: "루프 배경음 (메인, 전투, 상점)"
+    default_duration_ms: 60000
+    duration_range: [30000, 120000]
+    default_variations: 1
+    default_format: ogg
+    channels: stereo
+    sample_rate: 44100
+    model: musicgen
+    prompt_suffix: ", loopable game music"
+    post_process: [trim, normalize, loop_detect, loop_crossfade, format_convert]
+
+  bgm_stinger:
+    description: "짧은 전환음 (승리, 패배, 보스 등장)"
+    default_duration_ms: 5000
+    duration_range: [3000, 8000]
+    default_variations: 1
+    default_format: ogg
+    channels: stereo
+    sample_rate: 44100
+    model: musicgen
+    prompt_suffix: ", short musical stinger"
+    post_process: [trim, normalize, fade, format_convert]
+
+  bgm_adaptive:
+    description: "인텐시티 레이어 (calm→medium→intense)"
+    default_duration_ms: 60000
+    duration_range: [30000, 120000]
+    default_variations: 1
+    default_format: ogg
+    channels: stereo
+    sample_rate: 44100
+    model: musicgen
+    prompt_suffix: ", adaptive game music layer"
+    post_process: [trim, normalize, loop_detect, loop_crossfade, format_convert]
+
+# GPU 비용 추정 (초 단위)
+cost_estimation:
+  audiogen_sec_per_asset: 15
+  musicgen_sec_per_asset: 45
+  gpu_type_default: "NVIDIA RTX A5000"

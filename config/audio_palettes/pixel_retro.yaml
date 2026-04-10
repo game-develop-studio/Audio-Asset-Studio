@@ -1,0 +1,28 @@
+# 픽셀/레트로 — 8비트 칩튠 스타일 오디오 팔레트
+name: pixel_retro
+description: "8비트/칩튠 느낌. 레트로 아케이드, 픽셀 게임에 적합"
+
+tone:
+  brightness: bright
+  warmth: cool
+  attack: sharp
+  decay: very_short
+
+reverb:
+  type: none
+  wet: 0.0
+  decay_sec: 0.0
+
+eq_profile:
+  low_cut_hz: 120
+  high_shelf_hz: 6000
+  high_shelf_db: -1.0
+
+prompt_modifiers:
+  global_prefix: "8-bit, chiptune, retro"
+  sfx_prefix: "pixel game, arcade"
+  bgm_prefix: "chiptune melody, NES style"
+
+reference_games:
+  - vampire_survivors
+  - shovel_knight

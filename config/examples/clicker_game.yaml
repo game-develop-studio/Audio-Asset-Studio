@@ -1,0 +1,68 @@
+# 예제: 클릭커 게임 오디오 에셋
+project: my_clicker_v1
+audio_palette:
+  genre: casual_fantasy
+  reverb: small_room
+  master_eq: bright_crisp
+
+assets:
+  # SFX
+  - asset_id: click_gold
+    category: sfx_ui
+    prompt: "satisfying coin click, bright metallic tap, short"
+    variations: 5
+    duration_ms: 200
+    format: ogg
+
+  - asset_id: upgrade_buy
+    category: sfx_ui
+    prompt: "upgrade purchase, ascending ding, confirmation"
+    variations: 3
+    duration_ms: 300
+    format: ogg
+
+  - asset_id: levelup_fanfare
+    category: sfx_reward
+    prompt: "triumphant short jingle, ascending chimes, magical sparkle"
+    variations: 3
+    duration_ms: 1500
+    format: ogg
+
+  - asset_id: coin_collect
+    category: sfx_reward
+    prompt: "coin collect, bright ping, cheerful"
+    variations: 5
+    duration_ms: 250
+    format: ogg
+
+  - asset_id: enemy_hit
+    category: sfx_impact
+    prompt: "meaty impact hit, punch, slight crunch"
+    variations: 8
+    layers: [impact, sweetener, tail]
+    duration_ms: 400
+    format: ogg
+
+  - asset_id: prestige_whoosh
+    category: sfx_reward
+    prompt: "magical whoosh, ascending shimmer, prestige reset, epic"
+    variations: 2
+    duration_ms: 2000
+    format: ogg
+
+  # BGM
+  - asset_id: main_theme
+    category: bgm_loop
+    prompt: "cheerful 8-bit fantasy adventure theme, loopable, moderate tempo"
+    duration_sec: 60
+    loop: true
+    format: ogg
+    bpm: 120
+
+  - asset_id: boss_battle
+    category: bgm_loop
+    prompt: "intense chiptune boss battle, fast tempo, dramatic"
+    duration_sec: 45
+    loop: true
+    format: ogg
+    bpm: 160

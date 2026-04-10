@@ -1,0 +1,28 @@
+# 캐주얼 판타지 — 밝고 경쾌한 게임 오디오 팔레트
+name: casual_fantasy
+description: "밝고 따뜻한 판타지 톤. 클릭커/머지/캐주얼 RPG에 적합"
+
+tone:
+  brightness: bright
+  warmth: warm
+  attack: medium
+  decay: short
+
+reverb:
+  type: small_room
+  wet: 0.15
+  decay_sec: 0.8
+
+eq_profile:
+  low_cut_hz: 80
+  high_shelf_hz: 8000
+  high_shelf_db: 2.0
+
+prompt_modifiers:
+  global_prefix: "cheerful, bright, fantasy"
+  sfx_prefix: "clean, clear"
+  bgm_prefix: "adventurous, uplifting"
+
+reference_games:
+  - cookie_clicker
+  - idle_heroes

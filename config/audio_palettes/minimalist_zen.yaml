@@ -1,0 +1,28 @@
+# 미니멀/젠 — 깔끔하고 차분한 오디오 팔레트
+name: minimalist_zen
+description: "미니멀하고 깨끗한 톤. 퍼즐/2048류/명상 게임에 적합"
+
+tone:
+  brightness: neutral
+  warmth: warm
+  attack: soft
+  decay: medium
+
+reverb:
+  type: plate
+  wet: 0.25
+  decay_sec: 1.5
+
+eq_profile:
+  low_cut_hz: 60
+  high_shelf_hz: 10000
+  high_shelf_db: -2.0
+
+prompt_modifiers:
+  global_prefix: "minimal, clean, zen"
+  sfx_prefix: "soft, gentle, pure tone"
+  bgm_prefix: "ambient, peaceful, minimal"
+
+reference_games:
+  - "2048"
+  - monument_valley
