@@ -94,6 +94,9 @@ def main() -> None:
     # Phase 2: 사운드 명세 정규화
     spec_path = out_dir / "phase2_audio_spec.json"
     if 2 in phases:
+        if not palette_path.exists():
+            log.error("Phase 1 output required. Run Phase 1 first or include it in --phases")
+            sys.exit(1)
         from phases.phase2_audio_spec import run as run_p2
         spec_path = run_p2(
             project_id=project_id,
@@ -106,6 +109,9 @@ def main() -> None:
     # Phase 3: 프롬프트 빌드
     manifest_path = out_dir / "phase3_generation_manifest.json"
     if 3 in phases:
+        if not spec_path.exists():
+            log.error("Phase 2 output required. Run Phase 2 first or include it in --phases")
+            sys.exit(1)
         from phases.phase3_prompt_build import run as run_p3
         manifest_path = run_p3(
             spec_path=spec_path,

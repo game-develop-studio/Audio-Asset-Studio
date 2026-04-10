@@ -36,7 +36,12 @@ def convert_format(
 
     out = output_path or audio_path.with_suffix(f".{target_format}")
     params = FORMAT_PARAMS.get(target_format, {})
-    audio.export(str(out), format=target_format, **params)
+    audio.export(
+        str(out),
+        format=target_format,
+        codec=params.get("codec"),
+        parameters=params.get("parameters"),
+    )
     log.info(
         "Converted %s → %s (%d Hz, %d ch)",
         audio_path.name, out.name, sample_rate, audio.channels,

@@ -47,8 +47,9 @@ def mix_layers(
     if not segments:
         raise ValueError("No layers to mix")
 
-    # 빈 캔버스에 레이어 오버레이
-    mixed = AudioSegment.silent(duration=max_len, frame_rate=44100)
+    # 빈 캔버스에 레이어 오버레이 (첫 레이어의 프레임레이트 사용)
+    frame_rate = segments[0][0].frame_rate if segments else 44100
+    mixed = AudioSegment.silent(duration=max_len, frame_rate=frame_rate)
     for seg, delay in segments:
         mixed = mixed.overlay(seg, position=delay)
 

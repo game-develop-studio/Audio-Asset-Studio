@@ -66,15 +66,13 @@ def apply_loop_crossfade(
     tail = main[-crossfade_ms:]
     head = main[:crossfade_ms]
 
-    # tail을 페이드아웃, head를 페이드인해서 오버레이
+    # tail을 페이드아웃, head를 페이드인해서 오버레이 → 끊김 없는 루프
     faded_tail = tail.fade_out(crossfade_ms)
     faded_head = head.fade_in(crossfade_ms)
 
-    # 앞부분에 tail을 오버레이하고, 뒷부분의 tail을 제거
+    xfade_segment = faded_tail.overlay(faded_head)
     body = main[crossfade_ms:-crossfade_ms]
-    looped = faded_tail.overlay(faded_head) + body + faded_tail.overlay(faded_head)
-    # 간소화: 전체를 loop_point 길이로 자르고 끝에 페이드 적용
-    looped = main.fade_in(crossfade_ms).fade_out(crossfade_ms)
+    looped = xfade_segment + body + xfade_segment
 
     out = output_path or audio_path
     looped.export(str(out), format=out.suffix.lstrip("."))

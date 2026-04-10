@@ -59,4 +59,7 @@ def validate_audio_input(data: dict) -> dict:
         model = AudioInputModel(**data)
     except ValidationError as e:
         raise ValueError(f"Audio input schema invalid:\n{e}") from e
-    return model.model_dump(exclude_none=True)
+    if hasattr(model, "model_dump"):
+        return model.model_dump(exclude_none=True)
+    # Pydantic 미설치 폴백
+    return data
