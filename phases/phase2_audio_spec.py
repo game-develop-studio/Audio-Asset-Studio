@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 
 from shared.pipeline_helpers import read_json, read_yaml, write_json
-from shared.runpod_client import estimate_cost
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +15,6 @@ def run(
     palette_path: Path,
     out_dir: Path,
     categories_cfg_path: Path,
-    gpu_type: str = "NVIDIA RTX A5000",
 ) -> Path:
     """에셋 명세를 정규화하고 비용을 추정한다.
 
@@ -96,7 +94,6 @@ def run(
         total_gen_seconds += gen_count * sec_per
 
     hours = total_gen_seconds / 3600
-    cost = estimate_cost(gpu_type, hours)
 
     spec = {
         "project_id": project_id,
@@ -105,15 +102,15 @@ def run(
         "estimated_total_generations": sum(
             a["variations"] * (len(a.get("layers") or []) or 1) for a in normalized
         ),
-        "estimated_gpu_hours": round(hours, 4),
-        "estimated_cost_usd": cost,
+        "estimated_gen_hours": round(hours, 4),
+        "backend": "local",
     }
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "phase2_audio_spec.json"
     write_json(out, spec)
     log.info(
-        "Phase 2 done: %d assets, ~%.3fh, ~$%.2f",
-        len(normalized), hours, cost,
+        "Phase 2 done: %d assets, ~%.3fh (local)",
+        len(normalized), hours,
     )
     return out

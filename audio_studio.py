@@ -118,7 +118,7 @@ def main() -> None:
             out_dir=out_dir,
         )
 
-    # Phase 4: RunPod 생성
+    # Phase 4: 로컬 생성
     gen_report_path = out_dir / "phase4_generation_report.json"
     if 4 in phases:
         from phases.phase4_generate import run as run_p4
@@ -129,10 +129,6 @@ def main() -> None:
             pipeline_cfg_data = {
                 "cache": {"enabled": True, "root": str(out_dir / ".cache")},
                 "budget": {"hard_limit_usd": 5.0, "soft_limit_pct": 0.8},
-                "runpod": {
-                    "gpu_type": "NVIDIA RTX A5000",
-                    "image": "runpod/audiocraft:latest",
-                },
             }
             from shared.pipeline_helpers import write_yaml
             write_yaml(pipeline_cfg, pipeline_cfg_data)

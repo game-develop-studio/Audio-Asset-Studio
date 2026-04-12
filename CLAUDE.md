@@ -6,7 +6,7 @@
 1. **phase1_audio_palette** — 장르별 오디오 톤 프리셋 선택
 2. **phase2_audio_spec** — 사운드 명세 정규화 + 비용 추정
 3. **phase3_prompt_build** — 모델별 generation job 빌드 (레이어/배리에이션)
-4. **phase4_generate** — RunPod GPU에서 AudioCraft/MusicGen 생성 (해시 캐시 + 버짓 가드)
+4. **phase4_generate** — 로컬 MPS/CPU에서 AudioCraft/MusicGen 생성 (해시 캐시)
 5. **phase5_post_process** — normalize/trim/fade/loop/layer_mix/format_convert 체인
 6. **phase6_engine_import** — Unity/Godot 오디오 폴더 + .meta/.import 생성
 
