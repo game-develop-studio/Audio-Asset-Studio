@@ -37,8 +37,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--phases", default=None, help="실행할 phase 번호 (예: 1,2,3 또는 5,6)")
     p.add_argument("--preview", action="store_true", help="프리뷰 모드 (저품질 빠른 생성)")
     p.add_argument("--reference", default=None, help="레퍼런스 게임 (예: cookie-clicker)")
-    p.add_argument("--engine", default="unity", choices=["unity", "godot"], help="엔진 (기본: unity)")
+    p.add_argument("--engine", default="unity", choices=["unity", "unity_addr", "godot", "fmod", "wwise"], help="엔진 (기본: unity)")
     p.add_argument("--output", default=None, help="출력 디렉토리 (기본: output/<project>)")
+    p.add_argument(
+        "--backend",
+        default=None,
+        choices=["local", "warm", "runpod"],
+        help="생성 backend (기본: local). warm=model_server 웜풀, runpod=RunPod GPU",
+    )
+    p.add_argument("--loudness-target", default=None, help="LUFS 타겟 (예: -14=mobile, -16=console)")
+    p.add_argument("--only", default=None, help="특정 asset_id만 처리 (쉼표 구분). 예: --only sfx_click,bgm_main")
+    p.add_argument("--force", action="store_true", help="캐시 무시하고 재생성")
+    p.add_argument(
+        "--daemon", default="auto", choices=["auto", "on", "off"],
+        help="model_server 자동 기동 (auto: backend=warm일 때만, on: 항상, off: 안 함)",
+    )
+    p.add_argument("--stop-daemon", action="store_true", help="실행 후 model_server 종료")
     return p.parse_args()
 
 
@@ -60,9 +74,31 @@ def main() -> None:
 
     user_input = validate_audio_input(user_input)
 
+    # --only 필터: 지정된 asset_id만 남기기
+    if args.only:
+        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+        user_input["assets"] = [a for a in user_input["assets"] if a.get("asset_id") in wanted]
+        log.info("--only filter: %d assets remain", len(user_input["assets"]))
+        if not user_input["assets"]:
+            log.error("--only 필터 후 남은 에셋이 없습니다")
+            sys.exit(1)
+
     # 출력 디렉토리
     out_dir = Path(args.output) if args.output else ROOT / "output" / project_id
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # model_server 자동 기동
+    backend = args.backend or "local"
+    daemon_mode = args.daemon
+    if daemon_mode == "on" or (daemon_mode == "auto" and backend == "warm"):
+        try:
+            from shared.daemon import ensure_running
+            ensure_running()
+            log.info("model_server 준비 완료")
+        except Exception as e:
+            log.warning("model_server 자동 기동 실패: %s (--backend local 로 폴백)", e)
+            backend = "local"
+            args.backend = "local"
 
     # 실행할 phase 결정
     if args.phases:
@@ -127,8 +163,11 @@ def main() -> None:
         pipeline_cfg = config_dir / "pipeline.yaml"
         if not pipeline_cfg.exists():
             pipeline_cfg_data = {
-                "cache": {"enabled": True, "root": str(out_dir / ".cache")},
+                "backend": "local",
+                "cache": {"enabled": True, "root": str(ROOT / ".cache_shared")},
                 "budget": {"hard_limit_usd": 5.0, "soft_limit_pct": 0.8},
+                "local": {"unload_between_models": False},
+                "warm": {"endpoint": "http://127.0.0.1:8765"},
                 "runpod": {
                     "gpu_type": "NVIDIA RTX A5000",
                     "image": "runpod/audiocraft:latest",
@@ -141,6 +180,8 @@ def main() -> None:
             manifest_path=manifest_path,
             pipeline_cfg_path=pipeline_cfg,
             out_dir=out_dir,
+            backend_name=args.backend,
+            force=args.force,
         )
     elif 4 not in phases and args.dry_run:
         # dry-run: 빈 리포트 생성
@@ -175,6 +216,11 @@ def main() -> None:
 
     elapsed = time.time() - start
     log.info("=== Done in %.1fs ===", elapsed)
+
+    if args.stop_daemon:
+        from shared.daemon import stop
+        if stop():
+            log.info("model_server 종료")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
-"""Phase 4: RunPod GPU에서 AudioCraft/MusicGen으로 오디오 생성.
+"""Phase 4: Backend(local/warm/runpod)로 오디오 생성.
 
-- 해시 캐시 히트 시 Pod 미기동 (비용 0)
-- 버짓 가드로 hard limit 초과 방지
-- finally 패턴으로 Pod 확실히 종료
+- 해시 캐시 히트 시 backend 미기동 (비용 0)
+- 버짓 가드로 hard limit 초과 방지 (로컬/웜 backend는 cost=0이라 사실상 통과)
+- finally 패턴으로 backend 확실히 teardown
+- 시드 파밍 / 멀티플렉싱 / 레퍼런스 컨디셔닝 지원
 """
 from __future__ import annotations
 
@@ -10,25 +11,93 @@ import logging
 import os
 from pathlib import Path
 
+from shared.backends import GenerationJob, get_backend
 from shared.budget import BudgetGuard, BudgetState
 from shared.cache import AssetCache
 from shared.pipeline_helpers import read_json, read_yaml, write_json
-from shared.runpod_client import RunPodClient, estimate_cost, runpod_audio_session
 
 log = logging.getLogger(__name__)
+
+
+def _run_job(backend, job: GenerationJob, raw_j: dict, target_lufs: float):
+    """단일 job을 실행. multiplex / seed_farming 옵션 처리.
+
+    Returns:
+        (best_result, extra_dict)  — extra는 리포트에 병합될 메타
+    """
+    mux = raw_j.get("multiplex")
+    farm = raw_j.get("seed_farming")
+
+    if mux:
+        from shared.multiplex import multiplex_generate
+        best, all_res, scores = multiplex_generate(backend, job, mux, target_lufs)
+        return best, {
+            "variant": "multiplex",
+            "picked_model": best.model,
+            "picked_job_id": best.job_id,
+            "candidates": [
+                {"job_id": r.job_id, "model": r.model, "files": [str(p) for p in r.files],
+                 "score": scores.get(r.job_id, {}).get("total", 0.0)}
+                for r in all_res
+            ],
+            "scores": scores,
+        }
+
+    if farm:
+        from shared.seed_farming import farm_seeds
+        keep = int(raw_j.get("seed_farming_keep", 1))
+        picks = farm_seeds(backend, job, count=int(farm), keep=keep, target_lufs=target_lufs)
+        best_res, best_score = picks[0]
+        return best_res, {
+            "variant": "seed_farm",
+            "farmed": int(farm),
+            "kept": len(picks),
+            "score": best_score,
+            "picked_job_id": best_res.job_id,
+            "candidates": [
+                {"job_id": r.job_id, "files": [str(p) for p in r.files], "score": s.get("total", 0.0)}
+                for r, s in picks
+            ],
+        }
+
+    return backend.generate(job), {}
+
+
+def _build_job(job_dict: dict, raw_dir: Path) -> GenerationJob:
+    asset_dir = raw_dir / job_dict["asset_id"]
+    ref = job_dict.get("reference_audio")
+    return GenerationJob(
+        job_id=job_dict["job_id"],
+        asset_id=job_dict["asset_id"],
+        model=job_dict["model"],
+        prompt=job_dict["prompt"],
+        duration_ms=int(job_dict["duration_ms"]),
+        seed=int(job_dict.get("seed", 0)),
+        output_dir=asset_dir,
+        prefix=job_dict["job_id"],
+        reference_audio=Path(ref) if ref else None,
+        negative_prompt=job_dict.get("negative_prompt"),
+        cfg_scale=float(job_dict.get("cfg_scale", 3.0)),
+        extras=job_dict.get("extras", {}),
+    )
 
 
 def run(
     manifest_path: Path,
     pipeline_cfg_path: Path,
     out_dir: Path,
+    backend_name: str | None = None,
+    force: bool = False,
 ) -> Path:
     """generation manifest를 받아 오디오를 생성.
+
+    Args:
+        backend_name: "local" (default) | "warm" | "runpod". 환경변수 AUDIO_BACKEND도 인식.
 
     Returns:
         phase4_generation_report.json 경로
     """
-    cfg = read_yaml(pipeline_cfg_path)
+    cfg = read_yaml(pipeline_cfg_path) if pipeline_cfg_path.exists() else {}
     manifest = read_json(manifest_path)
     project_id = manifest["project_id"]
     jobs = manifest["jobs"]
@@ -36,143 +105,125 @@ def run(
     raw_dir = out_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    # 캐시 설정
     cache_cfg = cfg.get("cache", {"enabled": True, "root": str(out_dir / ".cache")})
     cache = AssetCache(Path(cache_cfg["root"])) if cache_cfg.get("enabled", True) else None
 
-    # 버짓 설정
     budget_cfg = cfg.get("budget", {"hard_limit_usd": 5.0, "soft_limit_pct": 0.8})
     budget = BudgetGuard(
         out_dir / "budget.json",
         BudgetState(
             project_id=project_id,
-            hard_limit_usd=float(os.environ.get("PROJECT_BUDGET_USD", budget_cfg.get("hard_limit_usd", 5.0))),
-            soft_limit_pct=float(os.environ.get("BUDGET_SOFT_LIMIT_PCT", budget_cfg.get("soft_limit_pct", 0.8))),
+            hard_limit_usd=float(os.environ.get(
+                "PROJECT_BUDGET_USD", budget_cfg.get("hard_limit_usd", 5.0)
+            )),
+            soft_limit_pct=float(os.environ.get(
+                "BUDGET_SOFT_LIMIT_PCT", budget_cfg.get("soft_limit_pct", 0.8)
+            )),
         ),
     )
 
     results: list[dict] = []
-    pending: list[dict] = []
+    pending_jobs: list[GenerationJob] = []
+    pending_raw: list[dict] = []
 
-    # 1단계: 캐시 확인
-    for job in jobs:
-        asset_dir = raw_dir / job["asset_id"]
-        if cache:
-            restored = cache.restore(job["cache_key"], asset_dir)
+    # 0) --force: 캐시 선-무효화
+    if force and cache:
+        invalidated = cache.invalidate_many([j["cache_key"] for j in jobs])
+        log.info("--force: invalidated %d cache entries", invalidated)
+
+    # 1) 캐시 히트 확인
+    for j in jobs:
+        asset_dir = raw_dir / j["asset_id"]
+        if cache and not force:
+            restored = cache.restore(j["cache_key"], asset_dir)
             if restored:
                 results.append({
-                    "job_id": job["job_id"],
-                    "asset_id": job["asset_id"],
+                    "job_id": j["job_id"],
+                    "asset_id": j["asset_id"],
                     "status": "cached",
                     "files": [str(p) for p in restored],
                 })
                 continue
-        pending.append(job)
+        pending_raw.append(j)
+        pending_jobs.append(_build_job(j, raw_dir))
 
-    if not pending:
-        log.info("Phase 4: all jobs cached, skipping RunPod")
+    if not pending_jobs:
+        log.info("Phase 4: all jobs cached")
         out = out_dir / "phase4_generation_report.json"
         write_json(out, {
             "project_id": project_id,
             "results": results,
-            "pod_used": False,
+            "backend": "cache",
+            "budget_spent": 0.0,
         })
         return out
 
-    # 2단계: 버짓 예상 차감
-    gpu_type = os.environ.get("RUNPOD_GPU_TYPE", cfg.get("runpod", {}).get("gpu_type", "NVIDIA RTX A5000"))
-    est_hours = len(pending) * 0.005
-    projected = estimate_cost(gpu_type, est_hours)
-    budget.check(projected)
+    # 2) backend 결정
+    backend_name = (
+        backend_name
+        or os.environ.get("AUDIO_BACKEND")
+        or cfg.get("backend", "local")
+    )
+    backend_cfg = cfg.get(backend_name, {}) if isinstance(cfg.get(backend_name), dict) else {}
+    # 하위 호환: runpod 설정은 top-level runpod 블록에 있을 수 있음
+    if backend_name == "runpod" and "runpod" in cfg:
+        backend_cfg = {**cfg.get("runpod", {}), **backend_cfg}
+    backend = get_backend(backend_name, backend_cfg)
 
-    # 3단계: Pod 세션 + 실행
-    image = os.environ.get("AUDIOCRAFT_IMAGE", cfg.get("runpod", {}).get("image", "runpod/audiocraft:latest"))
-    volume_id = os.environ.get("RUNPOD_NETWORK_VOLUME_ID") or None
+    projected = backend.estimate_cost(pending_jobs)
+    if projected > 0:
+        budget.check(projected)
 
-    with runpod_audio_session(
-        name=f"audio-asset-{project_id}",
-        gpu_type=gpu_type,
-        image=image,
-        volume_id=volume_id,
-        required_budget_usd=projected + 0.5,
-    ) as pod:
-        for job in pending:
-            asset_dir = raw_dir / job["asset_id"]
-            asset_dir.mkdir(parents=True, exist_ok=True)
+    log.info(
+        "Phase 4: backend=%s, %d jobs, est=$%.4f",
+        backend.name, len(pending_jobs), projected,
+    )
 
-            log.info("Generating %s (model=%s)", job["job_id"], job["model"])
+    # 3) 생성 루프
+    target_lufs = float(os.environ.get("LOUDNESS_TARGET_LUFS", cfg.get("loudness_target", -14.0)))
+
+    try:
+        backend.prepare(pending_jobs)
+        for raw_j, job in zip(pending_raw, pending_jobs):
             try:
-                # AudioCraft HTTP API 호출
-                # 실제 구현은 pod.api_url + /generate 엔드포인트
-                files = _generate_audio(
-                    api_url=pod.api_url,
-                    prompt=job["prompt"],
-                    model=job["model"],
-                    duration_ms=job["duration_ms"],
-                    seed=job["seed"],
-                    output_dir=asset_dir,
-                    prefix=job["job_id"],
-                )
+                res, extra = _run_job(backend, job, raw_j, target_lufs)
             except Exception as e:
-                log.error("Generation failed for %s: %s", job["job_id"], e)
+                log.error("Generation failed for %s: %s", job.job_id, e)
                 results.append({
-                    "job_id": job["job_id"],
-                    "asset_id": job["asset_id"],
+                    "job_id": job.job_id,
+                    "asset_id": job.asset_id,
                     "status": "failed",
                     "error": str(e),
                 })
                 continue
 
-            if cache and files:
-                cache.put(job["cache_key"], files)
-            budget.charge(estimate_cost(gpu_type, 0.005), reason=job["job_id"])
+            if cache and res.files:
+                cache.put(raw_j["cache_key"], res.files)
+            if res.cost_usd > 0:
+                budget.charge(res.cost_usd, reason=job.job_id)
 
-            results.append({
-                "job_id": job["job_id"],
-                "asset_id": job["asset_id"],
+            entry = {
+                "job_id": job.job_id,
+                "asset_id": job.asset_id,
                 "status": "generated",
-                "files": [str(p) for p in files],
-            })
+                "files": [str(p) for p in res.files],
+                "backend": res.backend,
+                "wall_sec": round(res.wall_sec, 2),
+            }
+            entry.update(extra)
+            results.append(entry)
+    finally:
+        backend.teardown()
 
     out = out_dir / "phase4_generation_report.json"
     write_json(out, {
         "project_id": project_id,
         "results": results,
-        "pod_used": True,
+        "backend": backend.name,
         "budget_spent": budget.state.spent_usd,
     })
-    log.info("Phase 4 done: %d generated, spent $%.4f", len(results), budget.state.spent_usd)
-    return out
-
-
-def _generate_audio(
-    api_url: str,
-    prompt: str,
-    model: str,
-    duration_ms: int,
-    seed: int,
-    output_dir: Path,
-    prefix: str,
-) -> list[Path]:
-    """AudioCraft HTTP API로 오디오 생성 (실사용 시 구현 필요).
-
-    Returns:
-        생성된 WAV 파일 경로 리스트
-    """
-    import requests
-
-    resp = requests.post(
-        f"{api_url}/generate",
-        json={
-            "model": model,
-            "prompt": prompt,
-            "duration": duration_ms / 1000.0,
-            "seed": seed,
-        },
-        timeout=300,
+    log.info(
+        "Phase 4 done: %d results, spent $%.4f (backend=%s)",
+        len(results), budget.state.spent_usd, backend.name,
     )
-    resp.raise_for_status()
-
-    out_path = output_dir / f"{prefix}.wav"
-    out_path.write_bytes(resp.content)
-    return [out_path]
+    return out
