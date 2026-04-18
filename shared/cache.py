@@ -45,3 +45,13 @@ class AssetCache:
         d.mkdir(parents=True, exist_ok=True)
         for f in files:
             shutil.copy2(f, d / f.name)
+
+    def invalidate(self, key: str) -> bool:
+        d = self._key_dir(key)
+        if not d.exists():
+            return False
+        shutil.rmtree(d)
+        return True
+
+    def invalidate_many(self, keys: list[str]) -> int:
+        return sum(1 for k in keys if self.invalidate(k))

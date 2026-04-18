@@ -11,3 +11,6 @@ build/
 *.wav
 *.ogg
 *.mp3
+.venv/
+venv/
+.deps_installed

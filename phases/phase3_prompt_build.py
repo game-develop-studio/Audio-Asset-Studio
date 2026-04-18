@@ -23,6 +23,34 @@ LAYER_PROMPT_HINTS = {
 }
 
 
+def _decorate(job: dict, asset: dict) -> dict:
+    """job에 멀티플렉싱 / 시드 파밍 / 레퍼런스 컨디셔닝 / cfg 등 확장 필드 주입."""
+    if asset.get("multiplex"):
+        job["multiplex"] = list(asset["multiplex"])
+    if asset.get("seed_farming"):
+        job["seed_farming"] = int(asset["seed_farming"])
+        job["seed_farming_keep"] = int(asset.get("seed_farming_keep", 1))
+    if asset.get("reference_audio"):
+        job["reference_audio"] = str(asset["reference_audio"])
+    if asset.get("negative_prompt"):
+        job["negative_prompt"] = asset["negative_prompt"]
+    if asset.get("cfg_scale"):
+        job["cfg_scale"] = float(asset["cfg_scale"])
+    job["cache_key"] = hash_params({
+        "asset": job["asset_id"],
+        "job": job["job_id"],
+        "prompt": job["prompt"],
+        "duration": job["duration_ms"],
+        "seed": job["seed"],
+        "model": job["model"],
+        "mux": job.get("multiplex"),
+        "ref": job.get("reference_audio"),
+        "neg": job.get("negative_prompt"),
+        "cfg": job.get("cfg_scale"),
+    })
+    return job
+
+
 def _build_jobs_for_asset(asset: dict) -> list[dict]:
     """단일 에셋에 대해 generation job 목록을 생성."""
     jobs: list[dict] = []
@@ -43,14 +71,7 @@ def _build_jobs_for_asset(asset: dict) -> list[dict]:
                     "layer": il["level"],
                     "is_intensity_layer": True,
                 }
-                job["cache_key"] = hash_params({
-                    "asset": job["asset_id"],
-                    "job": job["job_id"],
-                    "prompt": job["prompt"],
-                    "duration": job["duration_ms"],
-                    "seed": job["seed"],
-                })
-                jobs.append(job)
+                jobs.append(_decorate(job, asset))
     elif layers:
         # 레이어드 SFX: 레이어별 × 배리에이션
         for layer_name in layers:
@@ -67,14 +88,7 @@ def _build_jobs_for_asset(asset: dict) -> list[dict]:
                     "layer": layer_name,
                     "is_intensity_layer": False,
                 }
-                job["cache_key"] = hash_params({
-                    "asset": job["asset_id"],
-                    "job": job["job_id"],
-                    "prompt": job["prompt"],
-                    "duration": job["duration_ms"],
-                    "seed": job["seed"],
-                })
-                jobs.append(job)
+                jobs.append(_decorate(job, asset))
     else:
         # 단일 생성
         for v in range(asset["variations"]):
@@ -88,14 +102,7 @@ def _build_jobs_for_asset(asset: dict) -> list[dict]:
                 "layer": None,
                 "is_intensity_layer": False,
             }
-            job["cache_key"] = hash_params({
-                "asset": job["asset_id"],
-                "job": job["job_id"],
-                "prompt": job["prompt"],
-                "duration": job["duration_ms"],
-                "seed": job["seed"],
-            })
-            jobs.append(job)
+            jobs.append(_decorate(job, asset))
 
     return jobs
 

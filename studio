@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Audio Asset Studio — one-command launcher
+# 사용:
+#   ./studio              # 대시보드만
+#   ./studio cli ...      # CLI 직접 (나머지 인자 전달)
+#   ./studio warm         # 모델 서버만 기동
+#   ./studio stop         # 모델 서버 종료
+#
+# M-series Mac 자동 감지, venv 체크, 없으면 만들고, 의존성 미설치 시 설치.
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+VENV=".venv"
+PY="${VENV}/bin/python"
+PIP="${VENV}/bin/pip"
+
+bold() { printf "\033[1m%s\033[0m\n" "$*"; }
+info() { printf "\033[36m→\033[0m %s\n" "$*"; }
+warn() { printf "\033[33m!\033[0m %s\n" "$*"; }
+
+# -------- python 버전 체크 --------
+if ! command -v python3 >/dev/null; then
+  echo "python3 없음. https://www.python.org/ 에서 3.9~3.11 설치 후 재실행."
+  exit 1
+fi
+PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+case "$PY_VER" in
+  3.9|3.10|3.11) ;;
+  *)
+    warn "Python $PY_VER — 권장: 3.9 ~ 3.11 (audiocraft 호환)"
+    warn "  계속 진행하지만 ml 의존성 설치에서 실패할 수 있음"
+    ;;
+esac
+
+# -------- ffmpeg 체크 --------
+if ! command -v ffmpeg >/dev/null; then
+  warn "ffmpeg 없음 — pydub 포맷 변환이 실패합니다"
+  case "$(uname)" in
+    Darwin) warn "  설치:  brew install ffmpeg" ;;
+    Linux)  warn "  설치:  sudo apt install ffmpeg  (또는 dnf/pacman)" ;;
+    *)      warn "  https://ffmpeg.org/download.html" ;;
+  esac
+fi
+
+# -------- 환경 감지 --------
+ARCH="$(uname -m)"
+if [[ "$(uname)" == "Darwin" && "$ARCH" == "arm64" ]]; then
+  export AUDIO_DEVICE="${AUDIO_DEVICE:-mps}"
+  info "M-series detected → AUDIO_DEVICE=mps"
+fi
+
+# -------- venv --------
+if [[ ! -d "$VENV" ]]; then
+  bold "🛠  Creating virtualenv at $VENV"
+  python3 -m venv "$VENV"
+fi
+
+# -------- deps (한 번만) --------
+STAMP="$VENV/.deps_installed"
+REQ_HASH="$(shasum requirements.txt 2>/dev/null | cut -d' ' -f1)"
+NEED_INSTALL=0
+if [[ ! -f "$STAMP" ]] || [[ "$(cat "$STAMP" 2>/dev/null)" != "$REQ_HASH" ]]; then
+  NEED_INSTALL=1
+fi
+
+if [[ "$NEED_INSTALL" == "1" ]]; then
+  bold "📦  Installing dependencies (requirements.txt)"
+  "$PIP" install --upgrade pip >/dev/null
+  "$PIP" install -r requirements.txt
+  echo "$REQ_HASH" > "$STAMP"
+fi
+
+# -------- subcommands --------
+MODE="${1:-dashboard}"
+shift || true
+
+case "$MODE" in
+  dashboard|ui|"")
+    info "Launching dashboard…"
+    exec "$VENV/bin/streamlit" run dashboard/app.py "$@"
+    ;;
+  cli)
+    exec "$PY" audio_studio.py "$@"
+    ;;
+  warm)
+    info "Starting model_server (foreground)"
+    exec "$PY" -m shared.model_server
+    ;;
+  warmbg)
+    info "Starting model_server (background)"
+    "$PY" -c "from shared.daemon import ensure_running; print(ensure_running())"
+    ;;
+  stop)
+    "$PY" -c "from shared.daemon import stop; print('stopped' if stop() else 'idle')"
+    ;;
+  status)
+    "$PY" -c "from shared.daemon import status; import json; print(json.dumps(status(), indent=2))"
+    ;;
+  doctor)
+    exec "$PY" scripts/doctor.py
+    ;;
+  test)
+    exec "$VENV/bin/python" -m pytest tests/ "$@"
+    ;;
+  *)
+    warn "Unknown mode: $MODE"
+    echo "Usage: ./studio [dashboard|cli|warm|warmbg|stop|status|doctor|test]"
+    exit 1
+    ;;
+esac

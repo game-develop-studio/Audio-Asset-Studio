@@ -29,7 +29,9 @@ def _run_post_chain(
     current = audio_path
     for step in chain:
         if step == "normalize":
-            current = normalize(current)
+            platform = asset_meta.get("loudness_platform")
+            target = asset_meta.get("target_lufs", -14.0)
+            current = normalize(current, target_dbfs=target, platform=platform)
         elif step == "trim":
             current = trim_silence(current)
         elif step == "fade":
@@ -37,10 +39,7 @@ def _run_post_chain(
         elif step == "loop_detect":
             pass  # loop_crossfade에서 같이 처리
         elif step == "loop_crossfade":
-            current = apply_loop_crossfade(
-                current,
-                bpm=asset_meta.get("bpm"),
-            )
+            current = apply_loop_crossfade(current, bpm=asset_meta.get("bpm"))
         elif step == "format_convert":
             target_fmt = asset_meta.get("format", "ogg")
             channels = 1 if asset_meta.get("channels") == "mono" else 2
@@ -50,6 +49,21 @@ def _run_post_chain(
                 sample_rate=asset_meta.get("sample_rate", 44100),
                 channels=channels,
             )
+        elif step == "auto_tag":
+            from post_process.audio_tagger import matches_category
+            cat = asset_meta.get("category", "")
+            passed, score, ranked = matches_category(current, cat, threshold=0.15)
+            asset_meta.setdefault("_tags", {})["ranked"] = ranked
+            asset_meta["_tags"]["passed"] = passed
+            asset_meta["_tags"]["score"] = score
+            if not passed:
+                log.warning("Tag mismatch %s: category=%s ranked=%s", current.name, cat, ranked[:3])
+        elif step == "stem_split":
+            from post_process.stem_split import split_stems, build_intensity_layers
+            stems = split_stems(current, current.parent / "stems")
+            layers = build_intensity_layers(stems, current.parent / "intensity", current.stem)
+            asset_meta.setdefault("_stems", {})["files"] = {k: str(v) for k, v in stems.items()}
+            asset_meta["_stems"]["intensity"] = {k: str(v) for k, v in layers.items()}
         else:
             log.warning("Unknown post-process step: %s", step)
 
