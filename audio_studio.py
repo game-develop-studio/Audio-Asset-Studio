@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from shared.pipeline_helpers import read_yaml
+from shared.daily_work import record_daily_work_event
 from shared.schemas import validate_audio_input
 
 logging.basicConfig(
@@ -54,6 +55,35 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--stop-daemon", action="store_true", help="실행 후 model_server 종료")
     return p.parse_args()
+
+
+def record_pipeline_daily_work(
+    *,
+    args: argparse.Namespace,
+    project_id: str,
+    input_path: Path,
+    out_dir: Path,
+    phases: set[int],
+    elapsed: float,
+    asset_count: int,
+) -> None:
+    detail = "\n".join([
+        f"프로젝트: {project_id}",
+        f"입력: {input_path}",
+        f"출력: {out_dir}",
+        f"Phase: {','.join(str(phase) for phase in sorted(phases))}",
+        f"에셋 수: {asset_count}",
+        f"엔진: {args.engine}",
+        f"백엔드: {args.backend or 'local'}",
+        f"Dry run: {args.dry_run}",
+        f"소요 시간: {elapsed:.1f}s",
+    ])
+    record_daily_work_event(
+        f"{project_id} 게임 오디오 에셋 생성",
+        detail=detail,
+        event_type="audio_asset",
+        repo_path=ROOT,
+    )
 
 
 def main() -> None:
@@ -216,6 +246,15 @@ def main() -> None:
 
     elapsed = time.time() - start
     log.info("=== Done in %.1fs ===", elapsed)
+    record_pipeline_daily_work(
+        args=args,
+        project_id=project_id,
+        input_path=input_path,
+        out_dir=out_dir,
+        phases=phases,
+        elapsed=elapsed,
+        asset_count=len(user_input.get("assets", [])),
+    )
 
     if args.stop_daemon:
         from shared.daemon import stop
