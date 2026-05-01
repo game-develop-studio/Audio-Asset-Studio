@@ -87,6 +87,9 @@ for i, proj in enumerate(projects):
             st.caption(f"🕒 {proj['mtime_rel']}")
             if st.button("Open", key=f"open_{proj['name']}", use_container_width=True):
                 st.session_state["active_project"] = proj["name"]
+                input_path = meta.get("input")
+                if input_path:
+                    st.session_state[f"input_{proj['name']}"] = input_path
                 st.switch_page("pages/1_🎛️_Studio.py")
 
 # ----- recent activity -----

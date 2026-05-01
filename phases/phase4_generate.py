@@ -14,7 +14,6 @@ from pathlib import Path
 from shared.backends import GenerationJob, get_backend
 from shared.budget import BudgetGuard, BudgetState
 from shared.cache import AssetCache
-from shared.local_generator import generate_audio
 from shared.pipeline_helpers import read_json, read_yaml, write_json
 
 log = logging.getLogger(__name__)

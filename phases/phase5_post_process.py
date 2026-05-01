@@ -126,6 +126,8 @@ def run(
                 "status": "processed",
                 "original": fpath_str,
                 "processed": str(processed),
+                "_tags": meta.get("_tags"),
+                "_stems": meta.get("_stems"),
             })
 
     # 레이어 믹스다운

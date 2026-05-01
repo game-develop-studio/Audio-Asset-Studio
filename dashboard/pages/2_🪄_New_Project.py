@@ -55,6 +55,13 @@ TEMPLATES: dict[str, dict] = {
     },
 }
 
+PLATFORM_TARGETS = {
+    "mobile": -14.0,
+    "console": -16.0,
+    "pc": -18.0,
+    "broadcast": -23.0,
+}
+
 
 # ----- Step 1 — identity & template -----
 if wiz["step"] == 1:
@@ -109,6 +116,10 @@ elif wiz["step"] == 3:
     payload = {
         "project": wiz["project_id"],
         "audio_palette": {"genre": tmpl["palette"]},
+        "audio_output": {
+            "loudness_platform": wiz["platform"],
+            "target_lufs": PLATFORM_TARGETS[wiz["platform"]],
+        },
         "assets": tmpl["assets"],
     }
     st.code(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), language="yaml")

@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from dashboard.components import asset_card, knobs_sliders, prompt_suggester  # noqa: E402
 from dashboard.runner import format_cmd, run_with_log  # noqa: E402
 from dashboard.state import (  # noqa: E402
-    daemon_badge, load_manifest, load_post_report, load_report, project_dir,
+    daemon_badge, load_manifest, load_post_report, load_project_config, load_report, project_dir,
 )
 
 st.set_page_config(page_title="Studio", page_icon="🎛️", layout="wide")
@@ -27,7 +27,33 @@ if not project_name:
     st.stop()
 
 pdir = project_dir(ROOT, project_name)
-input_guess = st.session_state.get(f"input_{project_name}") or str(ROOT / "config" / "examples" / "clicker_game.yaml")
+project_cfg = load_project_config(pdir)
+stored_input = st.session_state.get(f"input_{project_name}") or project_cfg.get("input")
+if stored_input:
+    st.session_state[f"input_{project_name}"] = stored_input
+input_guess = stored_input or str(ROOT / "config" / "examples" / "clicker_game.yaml")
+
+LOUDNESS_OPTIONS = {
+    "mobile (-14)": ("mobile", -14.0),
+    "console (-16)": ("console", -16.0),
+    "pc (-18)": ("pc", -18.0),
+    "broadcast (-23)": ("broadcast", -23.0),
+}
+
+backend_key = f"run_backend_{project_name}"
+engine_key = f"run_engine_{project_name}"
+loudness_key = f"run_loudness_{project_name}"
+
+if backend_key not in st.session_state:
+    st.session_state[backend_key] = "local"
+if engine_key not in st.session_state:
+    st.session_state[engine_key] = project_cfg.get("engine", "unity")
+if loudness_key not in st.session_state:
+    default_platform = project_cfg.get("platform", "mobile")
+    st.session_state[loudness_key] = next(
+        (label for label, (platform, _) in LOUDNESS_OPTIONS.items() if platform == default_platform),
+        "mobile (-14)",
+    )
 
 # ----- sidebar -----
 with st.sidebar:
@@ -35,10 +61,10 @@ with st.sidebar:
     st.markdown(daemon_badge())
     st.divider()
     st.markdown("**Run controls**")
-    backend = st.selectbox("Backend", ["local", "warm", "runpod"], key="run_backend")
-    engine = st.selectbox("Engine", ["unity", "unity_addr", "fmod", "wwise"], key="run_engine")
-    loudness = st.selectbox("Loudness", ["mobile (-14)", "console (-16)", "pc (-18)", "broadcast (-23)"])
-    loudness_val = {"mobile": -14, "console": -16, "pc": -18, "broadcast": -23}[loudness.split()[0]]
+    backend = st.selectbox("Backend", ["local", "warm", "runpod"], key=backend_key)
+    engine = st.selectbox("Engine", ["unity", "unity_addr", "fmod", "wwise"], key=engine_key)
+    loudness = st.selectbox("Loudness", list(LOUDNESS_OPTIONS), key=loudness_key)
+    loudness_platform, loudness_val = LOUDNESS_OPTIONS[loudness]
     st.divider()
     st.page_link("app.py", label="← All projects", icon="🏠")
 
@@ -67,7 +93,8 @@ def _do_run(**kwargs):
         lines.append(line)
         log_area.code("\n".join(lines[-30:]), language="log")
     rc = run_with_log(ROOT, _cb, project=project_name, input_file=input_file,
-                      backend=backend, engine=engine, loudness_target=loudness_val, **kwargs)
+                      backend=backend, engine=engine, loudness_target=loudness_val,
+                      loudness_platform=loudness_platform, **kwargs)
     if rc == 0:
         st.success("완료")
     else:
@@ -114,9 +141,14 @@ with tab_assets:
         st.info("아직 생성 결과가 없습니다.")
     else:
         post_lookup: dict[str, str] = {}
+        post_meta: dict[str, dict] = {}
         for r in (post_report or {}).get("results", []):
             if r.get("status") == "processed":
                 post_lookup[r["job_id"]] = r["processed"]
+                post_meta[r["job_id"]] = {
+                    "_tags": r.get("_tags"),
+                    "_stems": r.get("_stems"),
+                }
 
         # 필터
         f1, f2 = st.columns([2, 3])
@@ -126,7 +158,10 @@ with tab_assets:
         def _on_retake(asset_id: str) -> None:
             _do_run(phases="4,5,6", only=[asset_id], force=True)
 
-        items = report.get("results", [])
+        items = [
+            {**r, **{k: v for k, v in post_meta.get(r.get("job_id"), {}).items() if v is not None}}
+            for r in report.get("results", [])
+        ]
         if only_failed:
             items = [r for r in items if r.get("status") == "failed" or (r.get("_tags") or {}).get("passed") is False]
         if query:
@@ -168,7 +203,7 @@ with tab_edit:
 
             st.markdown("**Sound design knobs**")
             saved = asset.get("_knobs") or {}
-            new_knobs = knobs_sliders(cat, saved)
+            new_knobs = knobs_sliders(aid, cat, saved)
             if new_knobs != saved:
                 asset["_knobs"] = new_knobs
                 changed = True

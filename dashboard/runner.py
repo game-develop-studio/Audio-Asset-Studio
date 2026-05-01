@@ -21,6 +21,7 @@ def run_pipeline(
     backend: str = "local",
     engine: str | None = None,
     loudness_target: float | None = None,
+    loudness_platform: str | None = None,
 ) -> subprocess.Popen:
     cmd = [sys.executable, "audio_studio.py",
            "--project", project, "--input", input_file, "--backend", backend]
@@ -34,6 +35,8 @@ def run_pipeline(
         cmd += ["--engine", engine]
     if loudness_target is not None:
         cmd += ["--loudness-target", str(loudness_target)]
+    if loudness_platform:
+        cmd += ["--loudness-platform", loudness_platform]
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     return subprocess.Popen(
         cmd, cwd=str(root), env=env,
@@ -87,4 +90,8 @@ def format_cmd(**kwargs) -> str:
         parts.append("--force")
     if kwargs.get("engine"):
         parts.append(f"--engine {kwargs['engine']}")
+    if kwargs.get("loudness_target") is not None:
+        parts.append(f"--loudness-target {kwargs['loudness_target']}")
+    if kwargs.get("loudness_platform"):
+        parts.append(f"--loudness-platform {kwargs['loudness_platform']}")
     return " ".join(parts)

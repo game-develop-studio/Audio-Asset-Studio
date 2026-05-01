@@ -121,7 +121,7 @@ def prompt_suggester(query: str, category: str | None, k: int = 5) -> list[dict]
         return []
 
 
-def knobs_sliders(category: str, saved: dict[str, int] | None = None) -> dict[str, int]:
+def knobs_sliders(asset_id: str, category: str, saved: dict[str, int] | None = None) -> dict[str, int]:
     """카테고리별 허용 축만 슬라이더로 노출."""
     from shared.presets import axes_for_category, default_knobs
 
@@ -138,6 +138,6 @@ def knobs_sliders(category: str, saved: dict[str, int] | None = None) -> dict[st
                 axis.capitalize(),
                 min_value=0, max_value=10,
                 value=int(saved.get(axis, defaults.get(axis, 5))),
-                key=f"knob_{category}_{axis}",
+                key=f"knob_{asset_id}_{category}_{axis}",
             )
     return values

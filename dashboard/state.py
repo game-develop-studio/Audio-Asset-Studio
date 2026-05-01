@@ -6,6 +6,13 @@ import json
 from pathlib import Path
 
 
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
 def _rel_time(ts: float) -> str:
     now = dt.datetime.now().timestamp()
     delta = int(now - ts)
@@ -42,18 +49,20 @@ def load_projects(root: Path) -> list[dict]:
         if not p.is_dir():
             continue
         counts = _count_statuses(p / "phase4_generation_report.json")
+        project_cfg = load_project_config(p)
         budget = None
         bf = p / "budget.json"
         if bf.exists():
             try:
-                budget = float(json.loads(bf.read_text()).get("spent_usd", 0.0))
+                budget = float(_read_json(bf).get("spent_usd", 0.0))
             except Exception:
                 pass
         meta_palette = None
         pf = p / "phase1_audio_palette.json"
         if pf.exists():
             try:
-                meta_palette = json.loads(pf.read_text()).get("palette", {}).get("name")
+                palette_data = _read_json(pf)
+                meta_palette = palette_data.get("name") or palette_data.get("palette", {}).get("name")
             except Exception:
                 pass
         projects.append({
@@ -65,7 +74,12 @@ def load_projects(root: Path) -> list[dict]:
             "budget_spent": budget,
             "mtime": p.stat().st_mtime,
             "mtime_rel": _rel_time(p.stat().st_mtime),
-            "meta": {"palette": meta_palette},
+            "meta": {
+                "palette": meta_palette,
+                "input": project_cfg.get("input"),
+                "engine": project_cfg.get("engine"),
+                "platform": project_cfg.get("platform"),
+            },
         })
     return projects
 
@@ -111,6 +125,10 @@ def daemon_badge() -> str:
 
 def project_dir(root: Path, name: str) -> Path:
     return root / "output" / name
+
+
+def load_project_config(project_path: Path) -> dict:
+    return _read_json(project_path / "project.json")
 
 
 def load_report(project_path: Path) -> dict | None:

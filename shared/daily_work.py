@@ -8,7 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DAILY_WORK_SCRIPT = Path(
-    os.getenv("DAILY_WORK_LOGGER_SCRIPT", "/Users/woong/slack-claude-bot/scripts/record-daily-work.js")
+    os.getenv(
+        "DAILY_WORK_LOGGER_SCRIPT",
+        str(Path.home() / "slack-claude-bot" / "scripts" / "record-daily-work.js"),
+    )
 )
 
 

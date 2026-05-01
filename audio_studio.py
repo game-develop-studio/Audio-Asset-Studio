@@ -47,6 +47,12 @@ def parse_args() -> argparse.Namespace:
         help="생성 backend (기본: local). warm=model_server 웜풀, runpod=RunPod GPU",
     )
     p.add_argument("--loudness-target", default=None, help="LUFS 타겟 (예: -14=mobile, -16=console)")
+    p.add_argument(
+        "--loudness-platform",
+        default=None,
+        choices=["mobile", "console", "pc", "broadcast"],
+        help="플랫폼 라우드니스 프리셋 (예: mobile, console)",
+    )
     p.add_argument("--only", default=None, help="특정 asset_id만 처리 (쉼표 구분). 예: --only sfx_click,bgm_main")
     p.add_argument("--force", action="store_true", help="캐시 무시하고 재생성")
     p.add_argument(
@@ -170,6 +176,8 @@ def main() -> None:
             palette_path=palette_path,
             out_dir=out_dir,
             categories_cfg_path=categories_cfg,
+            loudness_target=float(args.loudness_target) if args.loudness_target is not None else None,
+            loudness_platform=args.loudness_platform,
         )
 
     # Phase 3: 프롬프트 빌드

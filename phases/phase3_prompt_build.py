@@ -137,6 +137,8 @@ def run(
                 "sample_rate": a.get("sample_rate", 44100),
                 "post_process": a.get("post_process", []),
                 "layers": a.get("layers"),
+                "loudness_platform": a.get("loudness_platform"),
+                "target_lufs": a.get("target_lufs"),
             }
             for a in spec["assets"]
         },
